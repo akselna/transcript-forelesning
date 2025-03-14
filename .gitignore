@@ -1,0 +1,6 @@
+venv/
+uploads/
+*.pdf
+*.wav
+*.mp3
+*.mp4
