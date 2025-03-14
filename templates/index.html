@@ -55,36 +55,280 @@
         background-color: #d9edf7;
         color: #31708f;
       }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid #ccc;
+        margin-bottom: 20px;
+      }
+      .tab {
+        padding: 10px 15px;
+        margin-right: 5px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        border-bottom: none;
+        border-radius: 5px 5px 0 0;
+        background-color: #f0f0f0;
+      }
+      .tab.active {
+        background-color: #fff;
+        border-bottom: 1px solid #fff;
+        margin-bottom: -1px;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+      .settings-panel {
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        margin-bottom: 20px;
+      }
+      .slider-container {
+        margin-bottom: 10px;
+      }
+      .slider {
+        width: 100%;
+      }
+      .slider-container .hint {
+        font-size: 12px;
+        color: #666;
+        margin-top: 4px;
+      }
+      .preview-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 15px;
+      }
+      .slide-preview {
+        width: 220px;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 4px;
+      }
+      .slide-preview img {
+        width: 100%;
+        height: 150px;
+        object-fit: contain;
+        background-color: #f0f0f0;
+      }
+      .slide-preview .time {
+        font-size: 14px;
+        margin-top: 5px;
+        text-align: center;
+      }
+
+      /* Progress bar styles */
+      .progress-container {
+        display: none;
+        margin: 20px 0;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+        background-color: #f9f9f9;
+      }
+      .progress-bar-outer {
+        width: 100%;
+        height: 20px;
+        background-color: #e0e0e0;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 10px;
+      }
+      .progress-bar-inner {
+        height: 100%;
+        background-color: #4caf50;
+        width: 0%;
+        transition: width 0.5s ease;
+        border-radius: 10px;
+      }
+      .progress-details {
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+      }
+      .progress-interval {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      .progress-time {
+        color: #666;
+      }
     </style>
   </head>
   <body>
-    <h1>Last opp MP4 og definer lysbilder</h1>
-    <input type="file" id="videoInput" accept=".mp4" /><br /><br />
+    <h1>Video til Tekst med Lysbilder</h1>
 
-    <h2>Lysbilder</h2>
-    <div id="slides">
-      <div class="slide">
-        <label>Lysbilde 1:</label><br />
-        <input
-          type="time"
-          step="1"
-          name="start"
-          placeholder="Starttid (HH:MM:SS)"
-        />
-        <input
-          type="time"
-          step="1"
-          name="end"
-          placeholder="Slutttid (HH:MM:SS)"
-        />
-        <input type="file" name="image" accept="image/*" />
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('manual')">
+        Manuell definisjon
+      </div>
+      <div class="tab" onclick="switchTab('auto')">Automatisk oppdagelse</div>
+    </div>
+
+    <div id="manual-tab" class="tab-content active">
+      <h2>Last opp MP4 og definer lysbilder manuelt</h2>
+      <input type="file" id="videoInput" accept=".mp4" /><br /><br />
+
+      <h2>Lysbilder</h2>
+      <div id="slides">
+        <div class="slide">
+          <label>Lysbilde 1:</label><br />
+          <input
+            type="time"
+            step="1"
+            name="start"
+            placeholder="Starttid (HH:MM:SS)"
+          />
+          <input
+            type="time"
+            step="1"
+            name="end"
+            placeholder="Slutttid (HH:MM:SS)"
+          />
+          <input type="file" name="image" accept="image/*" />
+        </div>
+      </div>
+      <button onclick="addSlide()">Legg til nytt lysbilde</button><br /><br />
+      <button id="uploadBtn" onclick="uploadFile()">
+        Last opp og transkriber
+      </button>
+      <button id="pdfBtn" onclick="downloadPDF()" disabled>Last ned PDF</button>
+      <button
+        id="manualSeparateDownloadBtn"
+        onclick="downloadSeparate()"
+        disabled
+      >
+        Last ned bilder og transkript separat
+      </button>
+
+      <!-- Progress bar for manual mode -->
+      <div id="progress-container-manual" class="progress-container">
+        <div class="progress-interval">
+          Behandler lysbilde <span id="current-interval-manual">0</span> av
+          <span id="total-intervals-manual">0</span>
+        </div>
+        <div class="progress-bar-outer">
+          <div id="progress-bar-manual" class="progress-bar-inner"></div>
+        </div>
+        <div class="progress-details">
+          <div id="progress-percent-manual">0%</div>
+          <div class="progress-time">
+            Gjenstående tid: <span id="remaining-time-manual">beregner...</span>
+          </div>
+        </div>
       </div>
     </div>
-    <button onclick="addSlide()">Legg til nytt lysbilde</button><br /><br />
-    <button id="uploadBtn" onclick="uploadFile()">
-      Last opp og transkriber
-    </button>
-    <button id="pdfBtn" onclick="downloadPDF()" disabled>Last ned PDF</button>
+
+    <div id="auto-tab" class="tab-content">
+      <h2>Automatisk oppdagelse av lysbilder</h2>
+      <p>
+        Last opp en video og systemet vil automatisk oppdage lysbildeoverganger
+        og fange bildene <strong>før</strong> hvert lysbilde endres (med
+        lærerens notater).
+      </p>
+
+      <div class="settings-panel">
+        <h3>Innstillinger for oppdagelse</h3>
+        <div class="slider-container">
+          <label for="sensitivity"
+            >Følsomhet for endringer:
+            <span id="sensitivity-value">30</span></label
+          >
+          <input
+            type="range"
+            id="sensitivity"
+            class="slider"
+            min="1"
+            max="100"
+            value="30"
+            oninput="updateSliderValue('sensitivity')"
+          />
+          <div class="hint">
+            Lavere verdier oppdager mindre endringer (flere lysbilder)
+          </div>
+        </div>
+
+        <div class="slider-container">
+          <label for="min-duration"
+            >Minimum varighet (sekunder):
+            <span id="min-duration-value">3</span></label
+          >
+          <input
+            type="range"
+            id="min-duration"
+            class="slider"
+            min="1"
+            max="60"
+            value="3"
+            oninput="updateSliderValue('min-duration')"
+          />
+          <div class="hint">Minimum tid hver lysbilde bør vises</div>
+        </div>
+
+        <div class="slider-container">
+          <label for="capture-before"
+            >Sekunder før overgang å ta bilde:
+            <span id="capture-before-value">2</span></label
+          >
+          <input
+            type="range"
+            id="capture-before"
+            class="slider"
+            min="0.5"
+            max="5"
+            step="0.5"
+            value="2"
+            oninput="updateSliderValue('capture-before')"
+          />
+          <div class="hint">
+            Hvor mange sekunder før lysbildet endres ønsker du å ta skjermbilde?
+          </div>
+        </div>
+      </div>
+
+      <input type="file" id="autoVideoInput" accept=".mp4" /><br /><br />
+      <button id="detectBtn" onclick="detectSlides()">Oppdage lysbilder</button>
+      <button
+        id="autoTranscribeBtn"
+        onclick="transcribeDetectedSlides()"
+        disabled
+      >
+        Transkriber oppdaget lysbilder
+      </button>
+      <button id="autoPdfBtn" onclick="downloadPDF()" disabled>
+        Last ned PDF
+      </button>
+      <button
+        id="autoSeparateDownloadBtn"
+        onclick="downloadSeparate()"
+        disabled
+      >
+        Last ned bilder og transkript separat
+      </button>
+
+      <!-- Progress bar for auto mode -->
+      <div id="progress-container-auto" class="progress-container">
+        <div class="progress-interval">
+          Behandler lysbilde <span id="current-interval-auto">0</span> av
+          <span id="total-intervals-auto">0</span>
+        </div>
+        <div class="progress-bar-outer">
+          <div id="progress-bar-auto" class="progress-bar-inner"></div>
+        </div>
+        <div class="progress-details">
+          <div id="progress-percent-auto">0%</div>
+          <div class="progress-time">
+            Gjenstående tid: <span id="remaining-time-auto">beregner...</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="preview-container" class="preview-container"></div>
+    </div>
 
     <div id="status" class="status" style="display: none"></div>
 
@@ -94,6 +338,31 @@
     <script>
       let slideCount = 1;
       let result = []; // Global variabel for å lagre resultatene
+      let detectedSlides = []; // For automatically detected slides
+      let currentVideoPath = null; // Path to the current video file
+      let progressInterval = null; // For progress bar updates
+
+      function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.classList.remove("active");
+        });
+        document
+          .querySelector(`.tab[onclick="switchTab('${tabName}')"]`)
+          .classList.add("active");
+
+        // Update tab content
+        document.querySelectorAll(".tab-content").forEach((content) => {
+          content.classList.remove("active");
+        });
+        document.getElementById(`${tabName}-tab`).classList.add("active");
+      }
+
+      function updateSliderValue(sliderId) {
+        const slider = document.getElementById(sliderId);
+        const display = document.getElementById(`${sliderId}-value`);
+        display.textContent = slider.value;
+      }
 
       function addSlide() {
         slideCount++;
@@ -101,11 +370,11 @@
         const newSlide = document.createElement("div");
         newSlide.className = "slide";
         newSlide.innerHTML = `
-                <label>Lysbilde ${slideCount}:</label><br>
-                <input type="time" step="1" name="start" placeholder="Starttid (HH:MM:SS)">
-                <input type="time" step="1" name="end" placeholder="Slutttid (HH:MM:SS)">
-                <input type="file" name="image" accept="image/*">
-            `;
+          <label>Lysbilde ${slideCount}:</label><br>
+          <input type="time" step="1" name="start" placeholder="Starttid (HH:MM:SS)">
+          <input type="time" step="1" name="end" placeholder="Slutttid (HH:MM:SS)">
+          <input type="file" name="image" accept="image/*">
+        `;
         slidesDiv.appendChild(newSlide);
       }
 
@@ -123,6 +392,83 @@
         }
       }
 
+      // Progress tracking
+      function startProgressTracking(mode) {
+        // Clear any existing interval
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+
+        // Display progress container
+        const progressContainer = document.getElementById(
+          `progress-container-${mode}`
+        );
+        progressContainer.style.display = "block";
+
+        // Reset progress UI
+        document.getElementById(`progress-bar-${mode}`).style.width = "0%";
+        document.getElementById(`progress-percent-${mode}`).textContent = "0%";
+        document.getElementById(`remaining-time-${mode}`).textContent =
+          "beregner...";
+
+        // Set up interval to check progress
+        progressInterval = setInterval(() => {
+          checkTranscriptionProgress(mode);
+        }, 1000);
+      }
+
+      function stopProgressTracking() {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+        }
+      }
+
+      async function checkTranscriptionProgress(mode) {
+        try {
+          const response = await fetch("/transcription_progress");
+          const data = await response.json();
+
+          // Update progress UI
+          const progressBar = document.getElementById(`progress-bar-${mode}`);
+          const percentText = document.getElementById(
+            `progress-percent-${mode}`
+          );
+          const remainingTime = document.getElementById(
+            `remaining-time-${mode}`
+          );
+          const currentInterval = document.getElementById(
+            `current-interval-${mode}`
+          );
+          const totalIntervals = document.getElementById(
+            `total-intervals-${mode}`
+          );
+
+          progressBar.style.width = `${data.percent_complete}%`;
+          percentText.textContent = `${Math.round(data.percent_complete)}%`;
+
+          if (data.time_remaining) {
+            remainingTime.textContent = data.time_remaining;
+          }
+
+          currentInterval.textContent = data.current_interval;
+          totalIntervals.textContent = data.total_intervals;
+
+          // Check if processing is complete
+          if (data.status === "completed") {
+            stopProgressTracking();
+            document.getElementById(
+              `progress-container-${mode}`
+            ).style.display = "none";
+          } else if (data.status === "error") {
+            stopProgressTracking();
+            showStatus(`Feil: ${data.error_message}`, "error");
+          }
+        } catch (error) {
+          console.error("Error checking progress:", error);
+        }
+      }
+
       async function uploadFile() {
         const videoInput = document.getElementById("videoInput");
         const videoFile = videoInput.files[0];
@@ -134,10 +480,14 @@
         // Disable the upload button during processing
         document.getElementById("uploadBtn").disabled = true;
         document.getElementById("pdfBtn").disabled = true;
+        document.getElementById("manualSeparateDownloadBtn").disabled = true;
         showStatus(
           "Laster opp og transkriberer video. Dette kan ta litt tid...",
           "loading"
         );
+
+        // Start progress tracking
+        startProgressTracking("manual");
 
         const slides = document.getElementsByClassName("slide");
         const formData = new FormData();
@@ -170,8 +520,9 @@
           displayResults(result);
 
           document.getElementById("pdfBtn").disabled = false;
+          document.getElementById("manualSeparateDownloadBtn").disabled = false;
           showStatus(
-            "Transkribering fullført! Du kan nå laste ned PDF.",
+            "Transkribering fullført! Du kan nå laste ned PDF eller separate filer.",
             "success"
           );
         } catch (error) {
@@ -179,6 +530,142 @@
           console.error("Upload error:", error);
         } finally {
           document.getElementById("uploadBtn").disabled = false;
+          stopProgressTracking();
+          document.getElementById("progress-container-manual").style.display =
+            "none";
+        }
+      }
+
+      async function detectSlides() {
+        const videoInput = document.getElementById("autoVideoInput");
+        const videoFile = videoInput.files[0];
+        if (!videoFile) {
+          showStatus("Velg en MP4-fil først!", "error");
+          return;
+        }
+
+        // Disable buttons during processing
+        document.getElementById("detectBtn").disabled = true;
+        document.getElementById("autoTranscribeBtn").disabled = true;
+        document.getElementById("autoPdfBtn").disabled = true;
+        document.getElementById("autoSeparateDownloadBtn").disabled = true;
+        showStatus("Oppdager lysbilder. Dette kan ta litt tid...", "loading");
+
+        const formData = new FormData();
+        formData.append("video", videoFile);
+
+        // Get settings
+        const sensitivity = document.getElementById("sensitivity").value;
+        const minDuration = document.getElementById("min-duration").value;
+        const captureBefore = document.getElementById("capture-before").value;
+
+        formData.append("sensitivity", sensitivity);
+        formData.append("min_duration", minDuration);
+        formData.append("capture_before", captureBefore);
+
+        try {
+          const response = await fetch("/detect_slides", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Server error");
+          }
+
+          const data = await response.json();
+          detectedSlides = data.slides;
+          currentVideoPath = data.video_path;
+
+          showPreview(detectedSlides);
+
+          document.getElementById("autoTranscribeBtn").disabled = false;
+          showStatus(
+            `Oppdaget ${detectedSlides.length} lysbilder i videoen! Bilder er tatt ${captureBefore} sekunder før hvert lysbilde endres for å inkludere lærerens notater.`,
+            "success"
+          );
+        } catch (error) {
+          showStatus(
+            "Feil ved oppdagelse av lysbilder: " + error.message,
+            "error"
+          );
+          console.error("Slide detection error:", error);
+        } finally {
+          document.getElementById("detectBtn").disabled = false;
+        }
+      }
+
+      function showPreview(slides) {
+        const container = document.getElementById("preview-container");
+        container.innerHTML = "";
+
+        slides.forEach((slide, index) => {
+          const previewEl = document.createElement("div");
+          previewEl.className = "slide-preview";
+          previewEl.innerHTML = `
+            <img src="${slide.image}" alt="Lysbilde ${index + 1}">
+            <div class="time">Lysbilde ${index + 1}: ${slide.start} - ${
+            slide.end
+          }</div>
+          `;
+          container.appendChild(previewEl);
+        });
+      }
+
+      async function transcribeDetectedSlides() {
+        if (!detectedSlides.length || !currentVideoPath) {
+          showStatus("Ingen oppdagede lysbilder å transkribere.", "error");
+          return;
+        }
+
+        // Disable buttons during processing
+        document.getElementById("detectBtn").disabled = true;
+        document.getElementById("autoTranscribeBtn").disabled = true;
+        document.getElementById("autoPdfBtn").disabled = true;
+        document.getElementById("autoSeparateDownloadBtn").disabled = true;
+        showStatus(
+          "Transkriberer lysbilder. Dette kan ta litt tid...",
+          "loading"
+        );
+
+        // Start progress tracking
+        startProgressTracking("auto");
+
+        const formData = new FormData();
+        formData.append("video_path", currentVideoPath);
+        formData.append("intervals", JSON.stringify(detectedSlides));
+        formData.append("keep_video", "true"); // Don't delete the video after processing
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Server error");
+          }
+
+          result = await response.json(); // Store results globally
+          displayResults(result);
+
+          document.getElementById("autoPdfBtn").disabled = false;
+          document.getElementById("autoSeparateDownloadBtn").disabled = false;
+          showStatus(
+            "Transkribering fullført! Du kan nå laste ned PDF eller separate filer.",
+            "success"
+          );
+        } catch (error) {
+          showStatus("Feil ved transkribering: " + error.message, "error");
+          console.error("Transcription error:", error);
+        } finally {
+          document.getElementById("autoTranscribeBtn").disabled = false;
+          document.getElementById("detectBtn").disabled = false;
+          stopProgressTracking();
+          document.getElementById("progress-container-auto").style.display =
+            "none";
         }
       }
 
@@ -223,8 +710,8 @@
         }
 
         // Disable PDF button during download
-        const pdfBtn = document.getElementById("pdfBtn");
-        pdfBtn.disabled = true;
+        document.getElementById("pdfBtn").disabled = true;
+        document.getElementById("autoPdfBtn").disabled = true;
         showStatus("Genererer PDF. Vennligst vent...", "loading");
 
         try {
@@ -272,7 +759,96 @@
           showStatus("Kunne ikke laste ned PDF: " + error.message, "error");
           console.error("PDF download error:", error);
         } finally {
-          pdfBtn.disabled = false;
+          document.getElementById("pdfBtn").disabled = false;
+          document.getElementById("autoPdfBtn").disabled = false;
+        }
+      }
+
+      async function downloadSeparate() {
+        if (!result.length) {
+          showStatus(
+            "Ingen resultater å laste ned ennå. Last opp og transkriber først!",
+            "error"
+          );
+          return;
+        }
+
+        // Determine which tab is active to disable correct buttons
+        const isAutoTabActive = document
+          .getElementById("auto-tab")
+          .classList.contains("active");
+        const separateBtn = isAutoTabActive
+          ? document.getElementById("autoSeparateDownloadBtn")
+          : document.getElementById("manualSeparateDownloadBtn");
+
+        // Disable download buttons
+        separateBtn.disabled = true;
+        const pdfBtn = document.getElementById(
+          isAutoTabActive ? "autoPdfBtn" : "pdfBtn"
+        );
+        if (pdfBtn) pdfBtn.disabled = true;
+
+        showStatus("Forbereder separate nedlastinger...", "loading");
+
+        try {
+          // First download the text PDF
+          const pdfResponse = await fetch("/generate_text_pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(result),
+          });
+
+          if (!pdfResponse.ok) {
+            throw new Error("Kunne ikke generere PDF med transkript");
+          }
+
+          const pdfBlob = await pdfResponse.blob();
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          const pdfLink = document.createElement("a");
+          pdfLink.href = pdfUrl;
+          pdfLink.download = "transcript.pdf";
+          document.body.appendChild(pdfLink);
+          pdfLink.click();
+          document.body.removeChild(pdfLink);
+
+          // Short delay before starting next download
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          // Then download the images ZIP
+          const zipResponse = await fetch("/generate_images_zip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(result),
+          });
+
+          if (!zipResponse.ok) {
+            throw new Error("Kunne ikke generere ZIP med bilder");
+          }
+
+          const zipBlob = await zipResponse.blob();
+          const zipUrl = URL.createObjectURL(zipBlob);
+          const zipLink = document.createElement("a");
+          zipLink.href = zipUrl;
+          zipLink.download = "slides.zip";
+          document.body.appendChild(zipLink);
+          zipLink.click();
+          document.body.removeChild(zipLink);
+
+          // Clean up URLs
+          URL.revokeObjectURL(pdfUrl);
+          URL.revokeObjectURL(zipUrl);
+
+          showStatus("Bilder og transkript lastet ned!", "success");
+        } catch (error) {
+          showStatus(
+            "Kunne ikke laste ned separate filer: " + error.message,
+            "error"
+          );
+          console.error("Separate download error:", error);
+        } finally {
+          // Re-enable buttons
+          separateBtn.disabled = false;
+          if (pdfBtn) pdfBtn.disabled = false;
         }
       }
     </script>
