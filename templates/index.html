@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Video til Tekst med Lysbilder</title>
+    <style>
+      .slide {
+        margin-bottom: 20px;
+      }
+      pre {
+        background: #f0f0f0;
+        padding: 10px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Last opp MP4 og definer lysbilder</h1>
+    <input type="file" id="videoInput" accept=".mp4" /><br /><br />
+
+    <h2>Lysbilder</h2>
+    <div id="slides">
+      <div class="slide">
+        <label>Lysbilde 1:</label><br />
+        <input
+          type="time"
+          step="1"
+          name="start"
+          placeholder="Starttid (HH:MM:SS)"
+        />
+        <input
+          type="time"
+          step="1"
+          name="end"
+          placeholder="Slutttid (HH:MM:SS)"
+        />
+        <input type="file" name="image" accept="image/*" />
+      </div>
+    </div>
+    <button onclick="addSlide()">Legg til nytt lysbilde</button><br /><br />
+    <button onclick="uploadFile()">Last opp og transkriber</button>
+    <button onclick="downloadPDF()">Last ned PDF</button>
+
+    <h2>Resultat:</h2>
+    <div id="transcription"></div>
+
+    <script>
+      let slideCount = 1;
+      let result = []; // Global variabel for å lagre resultatene
+
+      function addSlide() {
+        slideCount++;
+        const slidesDiv = document.getElementById("slides");
+        const newSlide = document.createElement("div");
+        newSlide.className = "slide";
+        newSlide.innerHTML = `
+                <label>Lysbilde ${slideCount}:</label><br>
+                <input type="time" step="1" name="start" placeholder="Starttid (HH:MM:SS)">
+                <input type="time" step="1" name="end" placeholder="Slutttid (HH:MM:SS)">
+                <input type="file" name="image" accept="image/*">
+            `;
+        slidesDiv.appendChild(newSlide);
+      }
+
+      async function uploadFile() {
+        const videoInput = document.getElementById("videoInput");
+        const videoFile = videoInput.files[0];
+        if (!videoFile) {
+          alert("Velg en MP4-fil først!");
+          return;
+        }
+
+        const slides = document.getElementsByClassName("slide");
+        const formData = new FormData();
+        formData.append("video", videoFile);
+
+        const intervals = [];
+        for (let slide of slides) {
+          const start = slide.querySelector('input[name="start"]').value;
+          const end = slide.querySelector('input[name="end"]').value;
+          const image = slide.querySelector('input[name="image"]').files[0];
+          if (start && end) {
+            intervals.push({ start, end });
+            if (image) formData.append(`image_${intervals.length - 1}`, image);
+          }
+        }
+        formData.append("intervals", JSON.stringify(intervals));
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData,
+          });
+          result = await response.json(); // Lagre resultatene globalt
+          displayResults(result);
+        } catch (error) {
+          document.getElementById("transcription").innerText = "Feil: " + error;
+        }
+      }
+
+      function displayResults(data) {
+        const transcriptionDiv = document.getElementById("transcription");
+        transcriptionDiv.innerHTML = "";
+        data.forEach((item, index) => {
+          const slideDiv = document.createElement("div");
+          slideDiv.innerHTML = `
+                    <h3>Lysbilde ${index + 1} (${item.start} - ${item.end})</h3>
+                    ${item.image ? `<img src="${item.image}" width="200">` : ""}
+                    <pre>${item.text || "Ingen tekst"}</pre>
+                `;
+          transcriptionDiv.appendChild(slideDiv);
+        });
+      }
+
+      async function downloadPDF() {
+        if (!result.length) {
+          alert(
+            "Ingen resultater å laste ned ennå. Last opp og transkriber først!"
+          );
+          return;
+        }
+
+        try {
+          const response = await fetch("/generate_pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(result),
+          });
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "forelesning.pdf";
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch (error) {
+          alert("Kunne ikke laste ned PDF: " + error);
+        }
+      }
+    </script>
+  </body>
+</html>

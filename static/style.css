@@ -1,0 +1,14 @@
+body {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+}
+pre {
+  background: #f0f0f0;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+button {
+  margin-left: 10px;
+}
