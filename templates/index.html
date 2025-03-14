@@ -4,13 +4,56 @@
     <meta charset="UTF-8" />
     <title>Video til Tekst med Lysbilder</title>
     <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
       .slide {
         margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
       }
       pre {
         background: #f0f0f0;
         padding: 10px;
         white-space: pre-wrap;
+        border-radius: 4px;
+      }
+      button {
+        margin: 5px;
+        padding: 8px 15px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #dff0d8;
+        color: #3c763d;
+      }
+      .error {
+        background-color: #f2dede;
+        color: #a94442;
+      }
+      .loading {
+        background-color: #d9edf7;
+        color: #31708f;
       }
     </style>
   </head>
@@ -38,8 +81,12 @@
       </div>
     </div>
     <button onclick="addSlide()">Legg til nytt lysbilde</button><br /><br />
-    <button onclick="uploadFile()">Last opp og transkriber</button>
-    <button onclick="downloadPDF()">Last ned PDF</button>
+    <button id="uploadBtn" onclick="uploadFile()">
+      Last opp og transkriber
+    </button>
+    <button id="pdfBtn" onclick="downloadPDF()" disabled>Last ned PDF</button>
+
+    <div id="status" class="status" style="display: none"></div>
 
     <h2>Resultat:</h2>
     <div id="transcription"></div>
@@ -62,13 +109,35 @@
         slidesDiv.appendChild(newSlide);
       }
 
+      function showStatus(message, type) {
+        const statusDiv = document.getElementById("status");
+        statusDiv.textContent = message;
+        statusDiv.className = "status " + type;
+        statusDiv.style.display = "block";
+
+        // Hide status after 5 seconds if it's a success message
+        if (type === "success") {
+          setTimeout(() => {
+            statusDiv.style.display = "none";
+          }, 5000);
+        }
+      }
+
       async function uploadFile() {
         const videoInput = document.getElementById("videoInput");
         const videoFile = videoInput.files[0];
         if (!videoFile) {
-          alert("Velg en MP4-fil først!");
+          showStatus("Velg en MP4-fil først!", "error");
           return;
         }
+
+        // Disable the upload button during processing
+        document.getElementById("uploadBtn").disabled = true;
+        document.getElementById("pdfBtn").disabled = true;
+        showStatus(
+          "Laster opp og transkriberer video. Dette kan ta litt tid...",
+          "loading"
+        );
 
         const slides = document.getElementsByClassName("slide");
         const formData = new FormData();
@@ -91,50 +160,119 @@
             method: "POST",
             body: formData,
           });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Server error");
+          }
+
           result = await response.json(); // Lagre resultatene globalt
           displayResults(result);
+
+          document.getElementById("pdfBtn").disabled = false;
+          showStatus(
+            "Transkribering fullført! Du kan nå laste ned PDF.",
+            "success"
+          );
         } catch (error) {
-          document.getElementById("transcription").innerText = "Feil: " + error;
+          showStatus("Feil: " + error.message, "error");
+          console.error("Upload error:", error);
+        } finally {
+          document.getElementById("uploadBtn").disabled = false;
         }
       }
 
       function displayResults(data) {
         const transcriptionDiv = document.getElementById("transcription");
         transcriptionDiv.innerHTML = "";
+
+        if (data.length === 0) {
+          transcriptionDiv.innerHTML = "<p>Ingen resultater å vise.</p>";
+          return;
+        }
+
         data.forEach((item, index) => {
           const slideDiv = document.createElement("div");
+          slideDiv.className = "slide";
+
+          // Create the image HTML if an image exists
+          let imageHtml = "";
+          if (item.image) {
+            imageHtml = `<img src="${item.image}" alt="Lysbilde ${
+              index + 1
+            }" style="max-width: 100%; max-height: 200px; margin: 10px 0;">`;
+          }
+
           slideDiv.innerHTML = `
-                    <h3>Lysbilde ${index + 1} (${item.start} - ${item.end})</h3>
-                    ${item.image ? `<img src="${item.image}" width="200">` : ""}
-                    <pre>${item.text || "Ingen tekst"}</pre>
-                `;
+            <h3>Lysbilde ${index + 1} (${item.start} - ${item.end})</h3>
+            ${imageHtml}
+            <h4>Transkripsjon:</h4>
+            <pre>${item.text || "Ingen tekst"}</pre>
+          `;
           transcriptionDiv.appendChild(slideDiv);
         });
       }
 
       async function downloadPDF() {
         if (!result.length) {
-          alert(
-            "Ingen resultater å laste ned ennå. Last opp og transkriber først!"
+          showStatus(
+            "Ingen resultater å laste ned ennå. Last opp og transkriber først!",
+            "error"
           );
           return;
         }
 
+        // Disable PDF button during download
+        const pdfBtn = document.getElementById("pdfBtn");
+        pdfBtn.disabled = true;
+        showStatus("Genererer PDF. Vennligst vent...", "loading");
+
         try {
+          // First send a request to prepare the PDF
           const response = await fetch("/generate_pdf", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(result),
           });
+
+          if (!response.ok) {
+            // Try to get error details if possible
+            try {
+              const errorData = await response.json();
+              throw new Error(errorData.error || "Kunne ikke generere PDF");
+            } catch (parseError) {
+              throw new Error("Kunne ikke generere PDF: Serverfeil");
+            }
+          }
+
+          // Get the PDF as a blob
           const blob = await response.blob();
+
+          // Check if we actually got a PDF
+          if (blob.type !== "application/pdf") {
+            throw new Error("Serveren returnerte ikke en gyldig PDF-fil");
+          }
+
+          // Create download link
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
           a.download = "forelesning.pdf";
+          document.body.appendChild(a); // Need to append to body for Firefox
           a.click();
-          URL.revokeObjectURL(url);
+
+          // Clean up
+          setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }, 100);
+
+          showStatus("PDF lastet ned!", "success");
         } catch (error) {
-          alert("Kunne ikke laste ned PDF: " + error);
+          showStatus("Kunne ikke laste ned PDF: " + error.message, "error");
+          console.error("PDF download error:", error);
+        } finally {
+          pdfBtn.disabled = false;
         }
       }
     </script>
