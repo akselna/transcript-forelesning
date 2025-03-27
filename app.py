@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, send_file
 import os
-import whisper
+import subprocess
 import ffmpeg
 import json
 import cv2
@@ -42,6 +42,9 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 IMAGE_FOLDER = 'static/images'
 SLIDES_FOLDER = 'static/slides'
+WHISPER_CPP_PATH = os.environ.get('WHISPER_CPP_PATH', '/path/to/whisper.cpp')  # Configure this
+WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'small')  # Default model size
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['IMAGE_FOLDER'] = IMAGE_FOLDER
 app.config['SLIDES_FOLDER'] = SLIDES_FOLDER
@@ -54,6 +57,133 @@ os.makedirs(SLIDES_FOLDER, exist_ok=True)
 @app.route('/')
 def index():
     return render_template('index.html')
+
+# Function to transcribe audio using whisper.cpp
+def transcribe_with_whisper_cpp(audio_path, language='sv'):
+    """
+    Transcribe audio file using whisper.cpp
+    
+    Parameters:
+    - audio_path: Path to the WAV audio file
+    - language: Language code (default: 'no' for Norwegian)
+    
+    Returns:
+    - Transcription text as string
+    """
+    try:
+        # Path to whisper.cpp directory
+        whisper_dir = os.environ.get('WHISPER_CPP_PATH', '/path/to/whisper.cpp')
+        model_name = os.environ.get('WHISPER_MODEL', 'small')
+        
+        # Check all possible executable locations
+        possible_executables = [
+            os.path.join(whisper_dir, 'bin', 'whisper-cli'),
+            os.path.join(whisper_dir, 'build', 'bin', 'whisper-cli'),
+            os.path.join(whisper_dir, 'bin', 'main'),
+            os.path.join(whisper_dir, 'build', 'bin', 'main'),
+            os.path.join(whisper_dir, 'main')
+        ]
+        
+        whisper_exe = None
+        for exe_path in possible_executables:
+            if os.path.exists(exe_path) and os.access(exe_path, os.X_OK):
+                whisper_exe = exe_path
+                logger.info(f"Found whisper.cpp executable at: {whisper_exe}")
+                break
+                
+        if not whisper_exe:
+            raise FileNotFoundError(f"Could not find whisper.cpp executable in {whisper_dir}")
+        
+        # Find the model file
+        models_dir = os.path.join(whisper_dir, 'models')
+        if not os.path.exists(models_dir):
+            raise FileNotFoundError(f"Models directory not found: {models_dir}")
+            
+        # Look for any model file matching the pattern
+        model_files = []
+        for file in os.listdir(models_dir):
+            if file.startswith(f'ggml-{model_name}') and file.endswith('.bin'):
+                model_files.append(file)
+                
+        if not model_files:
+            raise FileNotFoundError(f"No model file found for '{model_name}' in {models_dir}")
+        
+        # Use the first matching model file
+        model_path = os.path.join(models_dir, model_files[0])
+        logger.info(f"Using model file: {model_path}")
+        
+        # Build command - adjust based on which executable is found
+        if 'whisper-cli' in whisper_exe:
+            # New CLI format (newer versions of whisper.cpp)
+            cmd = [
+                whisper_exe,
+                '-m', model_path,
+                '-f', audio_path,
+                '-l', language,
+                '-otxt'  # Output as text file
+            ]
+        else:
+            # Legacy main format
+            cmd = [
+                whisper_exe,
+                '-m', model_path,
+                '-f', audio_path,
+                '--language', language,
+                '-otxt'  # Output as text file
+            ]
+        
+        # Get the output directory and filename without extension
+        output_dir = os.path.dirname(audio_path)
+        base_filename = os.path.splitext(os.path.basename(audio_path))[0]
+        
+        # Expected output file
+        output_file = os.path.join(output_dir, f"{base_filename}.txt")
+        
+        # Execute the command
+        logger.info(f"Executing whisper.cpp command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Check if there was an error
+        if result.returncode != 0:
+            logger.error(f"whisper.cpp error: {result.stderr}")
+            # Also log stdout, which might contain useful info
+            logger.error(f"whisper.cpp stdout: {result.stdout}")
+            raise RuntimeError(f"whisper.cpp failed with error: {result.stderr}")
+        
+        # Check if output file exists
+        if not os.path.exists(output_file):
+            logger.warning(f"Expected output file not found: {output_file}")
+            
+            # Try alternative output file format (some versions use different naming)
+            alt_output_file = os.path.join(output_dir, f"{base_filename}.wav.txt")
+            if os.path.exists(alt_output_file):
+                logger.info(f"Found alternative output file: {alt_output_file}")
+                output_file = alt_output_file
+            else:
+                # If we still can't find the output file, try to extract from stdout
+                logger.warning("Using stdout content instead")
+                clean_output = result.stdout
+                # Try to clean up the output - remove progress bars and other non-transcript content
+                lines = clean_output.split('\n')
+                # Filter out lines that look like progress information
+                transcript_lines = [line for line in lines if not line.startswith(('[', 'whisper_', 'Transcription'))]
+                return '\n'.join(transcript_lines).strip()
+        
+        # Read the transcription from the output file
+        with open(output_file, 'r', encoding='utf-8') as f:
+            transcription = f.read()
+            
+        # Clean up the output file
+        try:
+            os.remove(output_file)
+        except Exception as e:
+            logger.warning(f"Could not remove output file: {e}")
+            
+        return transcription
+        
+    except Exception as e:
+        logger.error(f"Error in transcribe_with_whisper_cpp: {str(e)}", exc_info=True)
+        raise
 def detect_slide_changes(video_path, threshold=30, min_slide_duration=3, capture_seconds_before_change=2):
     """
     Enhanced slide detection that captures frames 2 seconds BEFORE a slide change is detected.
@@ -674,6 +804,7 @@ def download_separate():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/upload', methods=['POST'])
+@app.route('/upload', methods=['POST'])
 def upload_file():
     global transcription_progress
     
@@ -729,8 +860,8 @@ def upload_file():
         with progress_lock:
             transcription_progress['total_duration'] = total_duration
         
-        # Estimate time per second of audio
-        seconds_per_audio_second = 1.0
+        # Estimate time per second of audio (whisper.cpp is faster!)
+        seconds_per_audio_second = 0.5  # Estimated time for processing 1 second of audio
         
         # Calculate estimated total processing time
         estimated_total_seconds = total_duration * seconds_per_audio_second
@@ -744,8 +875,6 @@ def upload_file():
         
         start_time = time.time()
         processed_duration = 0
-        
-        model = whisper.load_model('medium')
         results = []
         
         for i, interval in enumerate(intervals):
@@ -768,7 +897,11 @@ def upload_file():
             with progress_lock:
                 transcription_progress['processed_duration'] = processed_duration
                 transcription_progress['percent_complete'] = processed_percent
-            
+
+            # Legg til denne kodebiten her
+            if i % 5 == 0:  # Logger bare for hvert 5. intervall
+                logger.info(f"Transcription progress: {processed_percent:.1f}% complete ({i}/{len(intervals)} intervals)")
+        
             # Print progress information
             logger.info(f"Processing interval {i+1}/{len(intervals)}: {interval['start']} to {interval['end']} ({interval_duration:.1f}s)")
             logger.info(f"Progress: {processed_percent:.1f}% complete, {processed_duration:.1f}/{total_duration:.1f} seconds processed")
@@ -793,8 +926,12 @@ def upload_file():
             stream = ffmpeg.output(stream, clipped_audio, format='wav', acodec='pcm_s16le')
             ffmpeg.run(stream, overwrite_output=True)
 
-            result = model.transcribe(clipped_audio, language='no')
-            text = result['text']
+            # Use whisper.cpp instead of Python whisper
+            try:
+                text = transcribe_with_whisper_cpp(clipped_audio, language='sv')
+            except Exception as e:
+                logger.error(f"Error using whisper.cpp: {str(e)}")
+                text = f"Error: {str(e)}"
 
             # Get image - either from the form or from the interval data
             image_url = interval.get('image')  # For automatic detection
@@ -856,7 +993,7 @@ def upload_file():
                 'error_message': str(e)
             })
         logger.error(f"Error in upload_file: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e)}), 5000
 
 @app.route('/generate_pdf', methods=['POST'])
 @app.route('/generate_pdf', methods=['POST'])
